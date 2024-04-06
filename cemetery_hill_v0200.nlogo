@@ -5,7 +5,8 @@ breed[devins devin]
 patches-own [elevation road?]
 confederates-own [health attack attack-range]
 unions-own [health attack attack-range]
-globals [confederate-engage-tick color-min color-max patch-data deployment-path max-elevation union-start]
+globals [confederate-engage-tick color-min color-max patch-data deployment-path max-elevation union-start buford-deploy-1 buford-deploy-2
+]
 
 to load-patch-data
 ;; Code from File Input Example and Grand Canyon
@@ -108,12 +109,22 @@ end
 to setup
   ;clear-all
   ;user-message deployment-path
-  let union-start-pos random length deployment-path
+  clear-turtles
+
+  let union-start-pos -1
+  ifelse start-pos-choice = -1 [
+    set union-start-pos random length deployment-path
+  ]
+  [
+    set union-start-pos start-pos-choice
+  ]
+
   set union-start item union-start-pos deployment-path
   ;user-message union-start
+  foreach deployment-path [pos -> ask patch first pos last pos  [set pcolor blue]]
   ask patch first union-start last union-start [set pcolor orange]
 
-  setup-confederates
+  ;setup-confederates
   setup-unions
   set confederate-engage-tick 0
   reset-ticks  ; Resets the tick counter for the simulation
@@ -147,6 +158,95 @@ end
 ;  foreach neighbors with [turtles-here = 0] []
 ;end
 
+to get-defensive-line[start-pt num-agents patch-limit path-1-first?]
+
+  let cur-path-pos  start-pt
+  let cnt num-agents
+  let rem cnt
+  ;let list-pos = sta
+
+  while [rem > 0]
+  [
+
+    ;ask patch first cur-p last cur-p [let ]
+    ;user-message (word "cur path pos" cur-path-pos)
+    ask patch first cur-path-pos last cur-path-pos [
+      let close-p max-n-of 8 neighbors [elevation]
+      ;user-message max-n-of 8 neighbors [elevation] user-message (word "highest elev:" close-p)
+      ;let p-list [self] of close-p
+      let elevs sort-by [[p1 p2] -> [elevation] of p1 > [elevation] of p2] close-p
+
+      let test-out []
+      ; user-message (word "for elev " [elevation] of ptch " " [pxcor] of ptch " " [pycor] of ptch )
+      let found? false
+      let elev-pos 0
+      while[not found?][
+        let high-patch item elev-pos elevs
+        let high-coords list [pxcor] of high-patch [pycor] of high-patch
+        ifelse path-1-first?
+        [
+          ifelse not member? high-coords buford-deploy-1 and not member? high-coords buford-deploy-2
+          [
+            set buford-deploy-1 sentence buford-deploy-1 (list (list first high-coords last high-coords))
+            set found? true
+            set cur-path-pos high-coords
+          ]
+          [
+            set elev-pos elev-pos + 1
+          ]
+        ]
+        [
+          ifelse not member? high-coords buford-deploy-1 and not member? high-coords buford-deploy-2
+          [
+            set buford-deploy-2 sentence buford-deploy-2 (list (list first high-coords last high-coords))
+            set found? true
+            set cur-path-pos high-coords
+          ]
+          [
+            set elev-pos elev-pos + 1
+          ]
+
+        ]
+
+      ]
+    ]
+    set rem (rem - patch-limit)
+  ]
+end
+
+
+
+to deploy-to-path[num-agents patch-limit path-list]
+
+  let cur-path-pos 0
+  let rem  num-agents
+  ;user-message word "deploy path list " path-list
+  while [rem > 0]
+  [
+    let cur-troop-pos item cur-path-pos path-list
+
+;    let random-x random-float max-xcor  ; Generate a random x-coordinate within the limit
+;    let random-y random-float max-ycor  ; Generate a random y-coordinate within the limit
+;    setxy (- random-x) random-y  ; Set the random x and y coordinates in the upper-left quadrant
+;    set color red
+;    set health 10
+;    set attack 2
+;    set attack-range 5
+
+    ;user-message word "cur u pos:" cur-troop-pos
+    create-unions patch-limit [
+
+      setxy first cur-troop-pos last cur-troop-pos; Set the position of the Union agent
+
+      set color blue
+      set health 10
+      set attack 3
+      set attack-range 3
+    ]
+    set cur-path-pos cur-path-pos + 1
+    set rem rem - patch-limit
+  ]
+end
 
 to setup-unions
 
@@ -167,45 +267,32 @@ to setup-unions
 ;    set attack-range 3
 ;  ]
 
-  let start-above  list (first union-start + 1) item 1 union-start
-  user-message (word "start-above" start-above)
-  let start-below list (first union-start - 1) item 1 union-start
+  let start-above  list first union-start (last union-start + 3)
+  ;user-message (word "start-above" start-above)
+  let start-below list first union-start (last union-start - 3)
   let half-total 275
-  let rem  275
-  let patch-limit  8
-  let cur-p  start-above
+  let patch-limit 8  ; 8 agents per path, i.e. 40 over 65 square meter patch
 
-  let cnt 16
-  set rem cnt
-  let above-list []
-  ;let list-pos = sta
-  while [rem > 0]
-  [
+  set buford-deploy-1 []
+  set buford-deploy-2 []
 
-    ;ask patch first cur-p last cur-p [let ]
-    user-message (word "cur pos" cur-p)
-    ask patch first cur-p last cur-p [ user-message max-n-of 8 neighbors [elevation] user-message (word "highest elev" first max-n-of 8 neighbors [elevation])]
-    set rem (rem - 1)
-  ]
+  ;user-message "Calling get def 1st time"
+  let path-1-first? true
+  get-defensive-line start-above half-total patch-limit path-1-first?
+  ;user-message word "bu dep 1 after get-defensive-line " buford-deploy-1
+  deploy-to-path half-total patch-limit buford-deploy-1
+  ;user-message word "bu path list 1" buford-deploy-1
+  ;user-message word "bu path list 2" buford-deploy-2
+
+  ;user-message "Calling get def 2nd time"
+  set path-1-first? false
+  get-defensive-line start-below half-total patch-limit path-1-first?
+  deploy-to-path half-total patch-limit buford-deploy-2
+  ;user-message word "bu path list 1" buford-deploy-1
+  ;user-message word "bu path list 2" buford-deploy-2
 
 
-  while [rem > 0]
-  [
-    create-unions patch-limit [
-      let angle 0; Calculate angle for each Union agent
 
-      setxy first cur-p item 1 cur-p; Set the position of the Union agent
-
-      set color blue
-      set health 10
-      set attack 3
-      set attack-range 3
-
-      ask turtles-on patch first cur-p last cur-p [uphill elevation]
-      set rem rem - patch-limit
-    ]
-    set rem (rem - patch-limit)
-  ]
 
 end
 
@@ -407,6 +494,21 @@ NIL
 NIL
 NIL
 1
+
+SLIDER
+16
+236
+188
+269
+start-pos-choice
+start-pos-choice
+-1
+20
+1.0
+1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?

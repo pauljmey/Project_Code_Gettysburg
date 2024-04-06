@@ -1,17 +1,15 @@
 breed [confederates confederate]
 breed [unions union]
-breed[devins devin]
 
-patches-own [elevation road?]
+patches-own [elevation]
 confederates-own [health attack attack-range]
 unions-own [health attack attack-range]
-globals [confederate-engage-tick color-min color-max patch-data deployment-path max-elevation union-start]
+globals [confederate-engage-tick color-min color-max patch-data]
 
 to load-patch-data
 ;; Code from File Input Example and Grand Canyon
 
   ; We check to make sure the file exists first
-  ;user-message "Trace 1"
   ifelse ( file-exists? "elev-by-rc.txt" )
   [
     ; We are saving the data into a list, so it only needs to be loaded once.
@@ -35,84 +33,38 @@ to load-patch-data
 
     ;if empty? patch-data [user-message "empty list"]
 
-    set max-elevation 123.148
+    set color-max 725.56
 
     let min-elevation 0
-    set color-min 0
-    set color-max 100
+    set color-min min-elevation - ((color-max - min-elevation) / 10)
 
 
     ; Done reading in patch information.  Close the file.
     file-close
   ]
   [ user-message "There is no file by that name in current directory!" ]
-
-
-  ifelse ( file-exists? "ChambersburgRoad-init-data.txt" )
-  [
-    ; We are saving the data into a list, so it only needs to be loaded once.
-    ; This opens the file, so we can use it.
-    file-open "ChambersburgRoad-init-data.txt"
-
-    ; Read in all the data in the file
-    set deployment-path []
-    while [ not file-at-end? ]
-    [
-      ; file-read gives you variables.  In this case numbers.
-      ; We store them in a double list (ex [[1 1 9.9999] [1 2 9.9999] ...
-      ; Each iteration we append the next three-tuple to the current list
-      ;let line list file-read file-read
-      ;user-message "Trace 4"
-      ;ifelse (first line = "lname") []
-      ;show file-read
-      set deployment-path sentence deployment-path (list (list file-read file-read))
-    ]
-
-    ;if empty? patch-data [user-message "empty list"]
-
-
-    let min-elevation 0
-    ;set color-min min-elevation - ((color-max - min-elevation) / 10)
-    set color-min 0
-
-    ; Done reading in patch information.  Close the file.
-    file-close
-  ]
-  [user-message "Road data file does not exist!"]
-
-end
-
-to initialize
-  clear-patches
-  ask patches[set road? false]
-  load-patch-data
-  show-patch-data
-  ;ask patches[ set pcolor round (135 * elevation / color-max) ];[set pcolor round (135 * elevation / color-max)]
-    ;ifelse pxcor mod 10 = 0 and pycor mod 10 = 0
-    ;   [set pcolor red]
-   ask patches [ set pcolor scale-color brown elevation 0 100]
-
-  ask patches[ if road?[set pcolor blue]]
 end
 
 to show-patch-data
+  clear-patches
+  clear-turtles
   ifelse ( is-list? patch-data )
-    [foreach patch-data [ three-tuple -> ask patch first three-tuple item 1 three-tuple [ set elevation last three-tuple ] ] ]
+    [ foreach patch-data [ three-tuple -> ask patch first three-tuple item 1 three-tuple [ set elevation last three-tuple ] ] ]
     [ user-message "You need to load in patch data first!" ]
-
-  foreach deployment-path [ two-tuple -> ask patch first two-tuple last two-tuple [set road? true]]
   display
 end
 
 
 to setup
-  ;clear-all
-  ;user-message deployment-path
-  let union-start-pos random length deployment-path
-  set union-start item union-start-pos deployment-path
-  ;user-message union-start
-  ask patch first union-start last union-start [set pcolor orange]
-
+   clear-all
+  load-patch-data
+  show-patch-data
+  ask patches[
+    ifelse pxcor mod 10 = 0 and pycor mod 10 = 0
+       [set pcolor red]
+       ;[ set pcolor scale-color brown elevation color-min color-max ]
+       [ set pcolor round (135 * elevation / color-max) ]
+  ]
   setup-confederates
   setup-unions
   set confederate-engage-tick 0
@@ -138,75 +90,24 @@ to setup-confederates
   reset-ticks
 end
 
-;to get-highest-neighbor[cur-p]
-;  let max 0
-;  let max-p cur-p
-;  ;let next-p min-n-of 1 neighbors
-;
-; ; foreach neighors[cur-n -> if turtles-here ]
-;  foreach neighbors with [turtles-here = 0] []
-;end
-
-
 to setup-unions
 
-  let total-unions (2750 / 5)  ; The total number of Union agents you plan to create
+  let total-unions 20  ; The total number of Union agents you plan to create
   let center-x 0  ; Center x-coordinate
   let center-y (max-pycor / 4) - 10  ; Center y-coordinate, adjusted lower than Confederates
   let radius 2.5; Radius of the circular formation
 
-;  create-unions total-unions [
-;    let angle (who * (360 / total-unions))  ; Calculate angle for each Union agent
-;    let x-position center-x + (radius * cos angle)  ; Calculate x-coordinate for each Union agent
-;    let y-position center-y + (radius * sin angle)  ; Calculate y-coordinate for each Union agent
-;    setxy x-position y-position  ; Set the position of the Union agent
-;
-;    set color blue
-;    set health 10
-;    set attack 3
-;    set attack-range 3
-;  ]
+  create-unions total-unions [
+    let angle (who * (360 / total-unions))  ; Calculate angle for each Union agent
+    let x-position center-x + (radius * cos angle)  ; Calculate x-coordinate for each Union agent
+    let y-position center-y + (radius * sin angle)  ; Calculate y-coordinate for each Union agent
+    setxy x-position y-position  ; Set the position of the Union agent
 
-  let start-above  list (first union-start + 1) item 1 union-start
-  user-message (word "start-above" start-above)
-  let start-below list (first union-start - 1) item 1 union-start
-  let half-total 275
-  let rem  275
-  let patch-limit  8
-  let cur-p  start-above
-
-  let cnt 16
-  set rem cnt
-  let above-list []
-  ;let list-pos = sta
-  while [rem > 0]
-  [
-
-    ;ask patch first cur-p last cur-p [let ]
-    user-message (word "cur pos" cur-p)
-    ask patch first cur-p last cur-p [ user-message max-n-of 8 neighbors [elevation] user-message (word "highest elev" first max-n-of 8 neighbors [elevation])]
-    set rem (rem - 1)
+    set color blue
+    set health 10
+    set attack 3
+    set attack-range 3
   ]
-
-
-  while [rem > 0]
-  [
-    create-unions patch-limit [
-      let angle 0; Calculate angle for each Union agent
-
-      setxy first cur-p item 1 cur-p; Set the position of the Union agent
-
-      set color blue
-      set health 10
-      set attack 3
-      set attack-range 3
-
-      ask turtles-on patch first cur-p last cur-p [uphill elevation]
-      set rem rem - patch-limit
-    ]
-    set rem (rem - patch-limit)
-  ]
-
 end
 
 to go
@@ -358,10 +259,10 @@ ticks
 30.0
 
 BUTTON
-42
-58
-108
-91
+44
+56
+110
+89
 NIL
 setup
 NIL
@@ -382,23 +283,6 @@ BUTTON
 NIL
 go
 T
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
-BUTTON
-43
-10
-118
-43
-Initialize
-initialize
-NIL
 1
 T
 OBSERVER
