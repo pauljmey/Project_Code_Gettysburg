@@ -3,12 +3,13 @@ breed [unions union]
 breed[devins devin]
 
 patches-own [elevation road?]
-confederates-own [health attack attack-range]
-unions-own [health attack attack-range]
+confederates-own [health attack attack-range unit-speed]
+unions-own [health attack attack-range unit-speed]
 globals [confederate-engage-tick color-min color-max
   patch-data deployment-path max-elevation
   union-start buford-deploy-1 buford-deploy-2
   stored-deploy-index stored-deploy-paths union-start-pos
+  wave-1-confederates converge?
 ]
 
 to load-patch-data
@@ -118,6 +119,8 @@ to setup
   ;clear-all
   ;user-message deployment-path
   clear-turtles
+  clear-plot
+  set converge? false
 
   set union-start-pos -1
   ifelse start-pos-choice = -1 [
@@ -132,16 +135,52 @@ to setup
   foreach deployment-path [pos -> ask patch first pos last pos  [set pcolor blue]]
   ask patch first union-start last union-start [set pcolor orange]
 
-  setup-confederates
+  setup-confederates-2
   setup-unions
   set confederate-engage-tick 0
   reset-ticks  ; Resets the tick counter for the simulation
 end
 
+to setup-confederates-2
+  let num-confederates (7600 / 5)  ; The total number of Confederate agents you plan to create
+  let num-lines 2  ; Number of lines to create
+
+  let max-xcor (max-pxcor / 6)  ; Maximum x-coordinate limit for the upper left quadrant
+  let max-ycor (max-pycor / 5)  ; Maximum y-coordinate limit for the upper left quadrant
+
+  let start-x1 -45
+  let start-y1 25
+  let end-x1 -40
+  let end-y1 30
+
+  let start-x2 -25
+  let start-y2 45
+  let end-x2 -20
+  let end-y2 50
+
+  let agents-per-line (num-confederates / num-lines)  ; Number of agents per line
+
+  create-confederates num-confederates [
+    set color red
+    set health 10
+    set attack 2
+    set attack-range 5
+    let line-index (who mod num-lines)  ; Determine which line to place the agent on
+    let start-x ifelse-value (line-index = 0) [start-x1] [start-x2]
+    let start-y ifelse-value (line-index = 0) [start-y1] [start-y2]
+    let end-x ifelse-value (line-index = 0) [end-x1] [end-x2]
+    let end-y ifelse-value (line-index = 0) [end-y1] [end-y2]
+    let t ((who - (line-index * agents-per-line)) / agents-per-line)  ; Interpolation parameter within each line
+    let x-pos (start-x + t * (end-x - start-x))
+    let y-pos (start-y + t * (end-y - start-y))
+    setxy x-pos y-pos
+  ]
+end
+
 to setup-confederates
 
   let num-confederates 7600 / 5  ; The total number of Confederate agents you plan to create
-
+  set wave-1-confederates num-confederates
   let max-xcor (1 *(max-pxcor / 2))  ; Maximum x-coordinate limit for the upper left quadrant
   let max-ycor (max-pycor / 2)  ; Maximum y-coordinate limit for the upper left quadrant
 
@@ -156,6 +195,7 @@ to setup-confederates
     set health 10
     set attack 2
     set attack-range 5
+    set unit-speed .5
     face patch first item 7 deployment-path last item 7 deployment-path
   ]
 
@@ -256,7 +296,8 @@ to deploy-to-path[num-agents patch-limit path-list]
       set color blue
       set health 10
       set attack 3
-      set attack-range 3
+      set attack-range 5
+      set unit-speed .5
     ]
     set cur-path-pos cur-path-pos + 1
     set rem rem - patch-limit
@@ -304,26 +345,64 @@ end
 
 to go
   ; Allow Confederates to engage only every 6 ticks
-  if (confederate-engage-tick >= 6) [
+  if (confederate-engage-tick >= 2) [
     ask confederates [engage unions]
     set confederate-engage-tick 0
   ]
 
   ; Union forces engage every tick
   ask unions [
-    move-to-defend
+    move-to-defend confederates
     engage confederates
   ]
 
   ; Increment Confederate engage tick counter and global tick counter
   set confederate-engage-tick confederate-engage-tick + 1
-  ask confederates [move-towards-union]
+  ask confederates [move-2]
+  if count confederates < .5 * wave-1-confederates [
+    user-message "Simulation ends, more than 50% confederate casualties."
+    stop
+  ]
+
+  if count unions <= 0 [
+    user-message "Simulation ends, union forces destroyed."
+    stop
+  ]
+
+  if ticks > 360
+  [
+    user-message "Reynolds reinforcements arrived."
+    stop
+  ]
+
+
   tick
 end
 
 to move
   right random 360
   forward 1
+end
+
+to move-2
+  let last-pos length deployment-path - 1
+  let cemetary-hill item last-pos deployment-path
+  let turn item 7 deployment-path
+
+  let hill-dist 22
+
+  ifelse distance patch first cemetary-hill last cemetary-hill < 22
+  [
+    face patch first cemetary-hill last cemetary-hill
+    forward .5
+  ]
+  [
+    face patch first turn last turn
+    forward .5
+  ]
+
+
+
 end
 
 to move-towards-union
@@ -338,66 +417,129 @@ to move-towards-union
 
     ; Generate a random target point across the width and below the current position
     let random-target-x (min-pxcor + random (2 * max-pxcor))
-    let random-target-y center-y + random-float ((min [ycor] of confederates) - center-y)
+
+
+    ;let random-target-y center-y + random-float ((min [ycor] of confederates) - center-y)
+    let last-pos length deployment-path - 1
+    let cemetary-hill item last-pos deployment-path
 
     ; Ensure the target doesn't go too low or off-screen
-    if random-target-y < center-y [set random-target-y center-y]
+    ;if random-target-y < center-y [set random-target-y center-y]
 
     ; Calculate a weighted target point, partially oriented towards Union centroid
     let weight 0.7  ; Adjust the weight for more or less orientation towards Union
-    let target-x (weight * union-center-x + (1 - weight) * random-target-x)
-    let target-y (weight * union-center-y + (1 - weight) * random-target-y)
+    let target-x (weight * union-center-x + (1 - weight) * first cemetary-hill)
+    let target-y (weight * union-center-y + (1 - weight) * last cemetary-hill)
 
     ; Adjust heading towards the weighted target position
     set heading towardsxy target-x target-y
 
     ; Move forward with randomness in speed to simulate terrain and uncertainty
-    forward 0.5 + (random-float 0.5)  ; Adjusted for noticeable variability
+    forward 0.5 + (random-float 0.2)  ; Adjusted for noticeable variability
   ]
 end
 
+to move-to-defend[enemy-breed]
+  let actor self  ; Store the current agent as 'actor' for clarity and to avoid misuse of 'myself'
+  let last-pos length deployment-path - 1
+  let cemetary-hill item last-pos deployment-path
+  ifelse [health] of actor < 3 [
 
+    face patch first cemetary-hill last cemetary-hill
+    forward .5
+  ]
+  [
+    let target min-one-of enemy-breed [distance actor]
 
-to move-to-defend
-  ; Define the center of the circular defense formation
-  let center-x 0  ; Center x-coordinate
-  let center-y (max-pycor / 4) - 10  ; Center y-coordinate, adjusted lower than Confederates
+    ;  let my-elevation [elevation] of patch xcor ycor
+    ;  let targ-elevation [elevation] of patch [xcor] of target [ycor] of target
+    ;  let elevation-difference my-elevation - targ-elevation
 
-  ; Each Union agent will move to a position on a circle around this center
-  let my-index who - min [who] of unions  ; Index to order Union agents
-  let total-unions count unions
-  let angle-increment 360 / total-unions  ; Determine angle step based on total agents
+    let deployment-targ patch first union-start last union-start
+    ;let enemy-distance distance
+    face target
+    ifelse target != nobody and distance target < [attack-range] of actor [
 
-  ; Calculate the target position for this agent on the circle
-  let my-angle (angle-increment * my-index) * pi / 180  ; Convert degrees to radians for trig functions
-  let radius 10  ; Radius of the circle
+      ifelse distance patch first cemetary-hill last cemetary-hill < 22
+      [
+       set converge? false
+      ]
+      [
+        set converge? true
+      ]
 
-  let target-x center-x + (radius * cos my-angle)
-  let target-y center-y + (radius * sin my-angle)
-
-  ; Calculate the angle towards the confederates
-  let towards-confederates atan (ycor - [ycor] of min-one-of confederates [distance myself]) (xcor - [xcor] of min-one-of confederates [distance myself])
-
-  ; Move towards the target position with reduced distance for defensive purposes
-  let target-patch patch target-x target-y
-  if target-patch != nobody [
-    ; Calculate the angle towards the weighted direction
-    let weighted-angle atan (0.9 * (target-y - ycor) + 0.1 * sin towards-confederates) (0.9 * (target-x - xcor) + 0.1 * cos towards-confederates)
-    ; Adjust heading towards the weighted direction
-    if weighted-angle != heading [
-      ifelse (weighted-angle - heading) > 180 [
-        right (360 - (weighted-angle - heading))
-      ] [
-        left (weighted-angle - heading)
+      ask actor [  ; Ensure 'ask' is correctly scoped to use 'actor' not 'myself'
+        forward [unit-speed] of actor
       ]
     ]
+    [
 
-    let distance-to-target distancexy target-x target-y
-    if distance-to-target > 0.5 [  ; Adjusted distance threshold for defensive movements
-      forward min (list 0.1 distance-to-target)  ; Move with reduced distance
+      if converge?[
+        face deployment-targ
+        forward .5
+      ]
     ]
   ]
+
+
+
+
+;  if target != nobody and distance target < [attack-range] of actor [
+;    ask actor [  ; Ensure 'ask' is correctly scoped to use 'actor' not 'myself'
+;      forward [unit-speed] of actor
+;    ]
+;  ]
+
+
+;  let nearest-ally min-one-of unions [distance actor]
+;  if distance nearest-ally > 1 [
+;    face nearest-ally
+;    forward .5
+;  ]
+;
 end
+
+
+;to move-to-defend
+;  ; Define the center of the circular defense formation
+;  let center-x 0  ; Center x-coordinate
+;  let center-y (max-pycor / 4) - 10  ; Center y-coordinate, adjusted lower than Confederates
+;
+;  ; Each Union agent will move to a position on a circle around this center
+;  let my-index who - min [who] of unions  ; Index to order Union agents
+;  let total-unions count unions
+;  let angle-increment 360 / total-unions  ; Determine angle step based on total agents
+;
+;  ; Calculate the target position for this agent on the circle
+;  let my-angle (angle-increment * my-index) * pi / 180  ; Convert degrees to radians for trig functions
+;  let radius 10  ; Radius of the circle
+;
+;  let target-x center-x + (radius * cos my-angle)
+;  let target-y center-y + (radius * sin my-angle)
+;
+;  ; Calculate the angle towards the confederates
+;  let towards-confederates atan (ycor - [ycor] of min-one-of confederates [distance myself]) (xcor - [xcor] of min-one-of confederates [distance myself])
+;
+;  ; Move towards the target position with reduced distance for defensive purposes
+;  let target-patch patch target-x target-y
+;  if target-patch != nobody [
+;    ; Calculate the angle towards the weighted direction
+;    let weighted-angle atan (0.9 * (target-y - ycor) + 0.1 * sin towards-confederates) (0.9 * (target-x - xcor) + 0.1 * cos towards-confederates)
+;    ; Adjust heading towards the weighted direction
+;    if weighted-angle != heading [
+;      ifelse (weighted-angle - heading) > 180 [
+;        right (360 - (weighted-angle - heading))
+;      ] [
+;        left (weighted-angle - heading)
+;      ]
+;    ]
+;
+;    let distance-to-target distancexy target-x target-y
+;    if distance-to-target > 0.5 [  ; Adjusted distance threshold for defensive movements
+;      forward min (list 0.1 distance-to-target)  ; Move with reduced distance
+;    ]
+;  ]
+;end
 
 to engage [enemy-breed]
   let actor self  ; Store the current agent as 'actor' for clarity and to avoid misuse of 'myself'
@@ -409,18 +551,56 @@ to engage [enemy-breed]
   ]
 end
 
+;to fight [target]
+;  ; Capture the attack value before the 'ask' to avoid 'myself' confusion
+;  let attack-value [attack] of myself
+;  ask target [
+;    ; Using the previously captured attack value
+;    if random 100 < 75 [  ; Assuming a 75% chance to hit
+;      set health health - attack-value
+;      if health <= 0 [
+;        die
+;      ]
+;    ]
+;  ]
+;end
+
 to fight [target]
-  ; Capture the attack value before the 'ask' to avoid 'myself' confusion
   let attack-value [attack] of myself
-  ask target [
-    ; Using the previously captured attack value
-    if random 100 < 75 [  ; Assuming a 75% chance to hit
+  let my-elevation [elevation] of patch xcor ycor
+  let targ-elevation [elevation] of patch [xcor] of target [ycor] of target
+  let elevation-difference my-elevation - targ-elevation
+
+  let dist-meters (distance target * 65)
+  ; Calculate the attack success probability based on elevation difference
+
+  let slope elevation-difference / dist-meters
+  let slope-factor 1
+  if slope > .3 [ set slope-factor .8]
+  if slope > 1 [set slope-factor .5]
+
+  let success-prob .05
+  if dist-meters < 500 [set success-prob .3]
+  if dist-meters < 400 [set success-prob .4]
+  if dist-meters < 300 [set success-prob .5]
+  if dist-meters < 200 [set success-prob .6]
+  if dist-meters < 100 [set success-prob .7]
+
+  set success-prob success-prob * slope-factor
+
+
+  ; success probability is within the valid range (0 to 100)
+
+  ; Check if the attack is successful based on the success probability
+  if random 100 < success-prob [
+    ask target [
       set health health - attack-value
       if health <= 0 [
         die
-      ]
-    ]
+     ]
   ]
+  ]
+
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -510,11 +690,47 @@ start-pos-choice
 start-pos-choice
 -1
 20
-11.0
+8.0
 1
 1
 NIL
 HORIZONTAL
+
+PLOT
+1654
+206
+2382
+816
+plot 1
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -5298144 true "plot count unions" "plot count confederates"
+"pen-1" 1.0 0 -14070903 true "" "plot count unions"
+
+BUTTON
+2223
+111
+2289
+147
+NIL
+NIL
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
