@@ -319,7 +319,7 @@ to setup-unions
 
   ;user-message "Calling get def 1st time"
   if not member? union-start-pos stored-deploy-index[
-    user-message word "setting up deploy paths for index " union-start-pos
+    ;user-message word "setting up deploy paths for index " union-start-pos
     let path-1-first? true
     get-defensive-line start-above half-total patch-limit path-1-first?
 
@@ -336,7 +336,7 @@ to setup-unions
   ]
 
   let cur-deploy-path-index position union-start-pos stored-deploy-index
-  user-message word "getting deploy path at pos " cur-deploy-path-index
+  ;user-message word "getting deploy path at pos " cur-deploy-path-index
   deploy-to-path half-total patch-limit item 0 item cur-deploy-path-index stored-deploy-paths
 
   deploy-to-path half-total patch-limit item 1 item cur-deploy-path-index stored-deploy-paths
@@ -458,7 +458,7 @@ to move-to-defend[enemy-breed]
     let deployment-targ patch first union-start last union-start
     ;let enemy-distance distance
     face target
-    ifelse target != nobody and distance target < [attack-range] of actor [
+    ifelse target != nobody and distance target < 2 * [attack-range] of actor [
 
       ifelse distance patch first cemetary-hill last cemetary-hill < 22
       [
@@ -500,7 +500,7 @@ to move-to-defend[enemy-breed]
 end
 
 
-;to move-to-defend
+;to 5efend
 ;  ; Define the center of the circular defense formation
 ;  let center-x 0  ; Center x-coordinate
 ;  let center-y (max-pycor / 4) - 10  ; Center y-coordinate, adjusted lower than Confederates
@@ -690,7 +690,7 @@ start-pos-choice
 start-pos-choice
 -1
 20
-8.0
+6.0
 1
 1
 NIL
@@ -714,23 +714,6 @@ false
 PENS
 "default" 1.0 0 -5298144 true "plot count unions" "plot count confederates"
 "pen-1" 1.0 0 -14070903 true "" "plot count unions"
-
-BUTTON
-2223
-111
-2289
-147
-NIL
-NIL
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
 
 @#$#@#$#@
 ## WHAT IS IT?
