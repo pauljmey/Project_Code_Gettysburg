@@ -1,6 +1,7 @@
 breed [infantry squad]
 infantry-own [health attack attack-range unit-speed mode goals army unit target-id target-dist
-  deploy-path-pos under-fire next-target
+  deploy-path-pos under-fire next-target cur-road-pos
+
 ]
 
 patches-own [elevation road? road-marker ridge? cover orig-color tag]
@@ -11,14 +12,20 @@ globals [color-min color-max
   union-start buford-deploy-1 ;buford-deploy-2
   stored-deploy-paths union-start-pos
   wave-1-confederates
-  union-orientation phases phase-index
+  union-orientation
   confed-turn cemetary-hill total-unions-Buford personnel-per-turtle
   ridge-toggle? Gettysburg-town-center town town-toggle?
   south-health Chambersburg-road rr-bed-path cemetary-hill-set
   max-health
   infantry-default-speed column-limit
   debug-mode? message-id message-coords
-  union-arrived-list
+  union-arrived-list never-been-on-road terminus
+  top-of-road
+  top-of-rr
+  confed-deployed-on-road
+  confed-deployed-on-rr
+  ;cur-amount ; input to update function for prev 2 variables
+  to-rr? to-road? ; update switch
 ]
 
 
@@ -189,6 +196,15 @@ to initialize
   set infantry-default-speed .5
   set column-limit 32
   set debug-mode? false
+  set never-been-on-road 1000
+  set terminus -3
+  set confed-deployed-on-road 0
+  set confed-deployed-on-rr 0
+  set top-of-road list -50 37
+  set top-of-rr list -50 41
+  set to-rr? false
+  set to-road? false
+
 
 
 
@@ -198,7 +214,7 @@ to initialize
 
   set total-unions-Buford historical-Buford / personnel-per-turtle
 
-  set phases (list "SouthEnter1" "NorthEnter1")
+
 
   load-patch-data
   let buford-historical-deploy 6
@@ -226,6 +242,25 @@ to initialize
     ]
   ]
 
+  foreach range length deployment-path
+  [
+    index ->
+    let zero-pos 7
+    if index > zero-pos
+    [
+      let x first item index deployment-path
+      let y last item index deployment-path
+      ask patch x y
+      [
+        set road? true
+          set road-marker -1 * (index - zero-pos)
+          set road? true
+          set tag "Chambersburg"
+          set cover 0
+      ]
+    ]
+  ]
+
   foreach range length rr-bed-path
   [
     index -> if index < length rr-bed-path
@@ -245,30 +280,37 @@ to initialize
     ]
   ]
 
-  ask patch first confed-turn last confed-turn
+  let last-pos length deployment-path - 1
+  set cemetary-hill item last-pos deployment-path
+  set Gettysburg-town-center list ((first confed-turn) + 7) last confed-turn
+
+  let hill-x  first cemetary-hill
+  let hill-y  last cemetary-hill
+  let town-x  first Gettysburg-town-center
+  let town-y  last Gettysburg-town-center
+
+  ask patch hill-x hill-y
   [
-    foreach range 69 [n ->
-      ask patch-at-heading-and-distance union-orientation n
-      [
-          set pcolor yellow
-          set road? true
-          set road-marker n
-          set tag "Chambersburg"
-          set cover 0
-      ]
-    ]
+    set road? true
+    set tag "Chambersburg"
+    set road-marker terminus
   ]
+
+  ask patch town-x town-y
+  [
+    set road? true
+    set tag "RR"
+    set road-marker -1
+  ]
+
 
   set Chambersburg-road patches with [tag = "Chambersburg"]
   set rr-bed-path patches with [tag = "RR"]
 
   ;user-message word "Road init: " Chambersburg-road
-  set Gettysburg-town-center list ((first confed-turn) + 7) last confed-turn
   let center-patch patch first Gettysburg-town-center last Gettysburg-town-center
   set town patches with [distance center-patch <= 8]
   ask town [ set cover 8]
-  let last-pos length deployment-path - 1
-  set cemetary-hill item last-pos deployment-path
   set cemetary-hill-set patches with [distance patch first cemetary-hill last cemetary-hill < 4]
   ask cemetary-hill-set [set cover 10]
 
@@ -413,14 +455,16 @@ to setup
 end
 
 
-to add-to-road[total-to-deploy in-army in-unit start-of-route]
+to add-to-path[total-to-deploy deployed-count in-army in-unit start-of-route]
 
+ ; show (word "adding at tick " ticks " to deploy " total-to-deploy " deployed already " deployed-count)
   ;trace 0 "adding to road"
-  let cur-total count infantry with [army = in-army and unit = in-unit]
   let set-on-top turtles-on patch first start-of-route last start-of-route
-  let filtered-set set-on-top with [army = in-army and unit = in-unit]
-  let cur-count count filtered-set
   let unit-pcolor 0
+
+  let placed count set-on-top
+  let room-for-more column-limit - placed
+  let remaining total-to-deploy - deployed-count
 
   if in-army = "South" [
       set unit-pcolor red
@@ -429,9 +473,12 @@ to add-to-road[total-to-deploy in-army in-unit start-of-route]
       set unit-pcolor blue
   ]
 
-  if cur-total < total-to-deploy and cur-count < column-limit
+
+  if remaining > 0
     [
-      let cur-to-make column-limit - cur-count
+      let cur-to-make min list remaining room-for-more
+      update cur-to-make
+
       create-infantry  cur-to-make [
         set color unit-pcolor
         set army in-army
@@ -443,6 +490,7 @@ to add-to-road[total-to-deploy in-army in-unit start-of-route]
         set mode "M"
         set deploy-path-pos -1
         set under-fire 0
+        set cur-road-pos never-been-on-road
 
         setxy first start-of-route last start-of-route
       ]
@@ -451,9 +499,33 @@ to add-to-road[total-to-deploy in-army in-unit start-of-route]
 
 end
 
+
+to update-rr[amount]
+  set confed-deployed-on-rr confed-deployed-on-rr + amount
+end
+
+to update-road[amount]
+  set confed-deployed-on-road confed-deployed-on-road + amount
+end
+
+to update[amount]
+  ifelse to-rr?
+  [
+    update-rr amount
+    set to-rr? false
+  ]
+  [
+    if to-road?
+    [
+      update-road amount
+      set to-road? false
+    ]
+  ]
+
+
+end
 to add-confederates-phase-1
   let num-confederates (7600 / 5)  ; The total number of Confederate agents you plan to create
-  let num-lines 2  ; Number of lines to create
 
   let max-xcor (max-pxcor / 6)  ; Maximum x-coordinate limit for the upper left quadrant
   let max-ycor (max-pycor / 5)  ; Maximum y-coordinate limit for the upper left quadrant
@@ -468,22 +540,21 @@ to add-confederates-phase-1
   let end-x2 -20
   let end-y2 50
 
-  let agents-per-line (num-confederates / num-lines)  ; Number of agents per line
 
-  let on-road round(num-confederates / 2)
-  let on-rr on-road
+  let to-deploy-on-road round(num-confederates / 2)
+  let to-deploy-on-rr to-deploy-on-road ; splitting forces equally here
+  ;let to-deploy-on-road 1
+  ;let to-deploy-on-rr 1
+  if confed-deployed-on-road < to-deploy-on-road
+  [
+    set to-road? true
+    add-to-path to-deploy-on-road confed-deployed-on-road "South" "RoadWave1" top-of-road
+  ]
+  if confed-deployed-on-rr < to-deploy-on-rr [
+    set to-rr? true
+    add-to-path to-deploy-on-rr confed-deployed-on-rr  "South" "RRWave1" top-of-rr
+  ]
 
-  let top-of-road list -50 37
-  let top-of-rr list -50 41
-
-
-  let goal-1 item 7 deployment-path
-  let rem  on-road
-
-
-  let cur-count count turtles with [xcor = first top-of-road and last top-of-road = ycor]
-  add-to-road on-road "South" "RoadWave1" top-of-road
-  add-to-road on-rr "South" "RRWave1" top-of-rr
 
 end
 
@@ -685,6 +756,7 @@ to deploy-to-path[num-agents patch-limit path-list]
       set message-id -1
       set message-coords nobody
       set deploy-path-pos cur-path-pos
+      set cur-road-pos never-been-on-road
     ]
 
     set cur-path-pos cur-path-pos + 1
@@ -719,7 +791,7 @@ to setup-unions
 
   let cur-deploy-path-index union-start-pos
   ;user-message word "getting deploy path at pos " cur-deploy-path-index
-
+  set total-unions-Buford 10
   deploy-to-path total-unions-Buford patch-limit item cur-deploy-path-index stored-deploy-paths
   ask infantry with [army = "North"]
   [
@@ -822,40 +894,66 @@ to-report get-unit-speed[cur-unit]
 end
 
 to follow-path[actor path-to-follow]
-  let test [road?] of patch-here
-   ;user-message word "double " double
-  trace 2 "top of follow-path"
-  trace 2 word "test " test
+  let cur-patch patch-here
+  let right-road? member? cur-patch path-to-follow
+  let on-road-test? [road?] of cur-patch and right-road?
   let next nobody
-  ; should be RoadWave1 unit
-  ifelse test
+  let actor-road-pos [cur-road-pos] of actor
+  let next-road-marker actor-road-pos
+
+  if true
   [
-    let cur-marker [road-marker] of patch-here
-    set next one-of patches with [road? and road-marker = cur-marker - 1 and tag = path-to-follow]
-
-    ;trace 0 (word "follow-path aba " [who] of actor " cur-marker " cur-marker " next " next  )
-    ;if next != nobody [trace 0 (word "next info cur-marker" [road-marker] of next) ]
-
-    if next != nobody
+    let cur-road-marker [road-marker] of cur-patch
+    ifelse on-road-test?
     [
-      trace 2 (word "found patch is " next " rm : " [road-marker] of next)
+      set next-road-marker cur-road-marker - 1
+      ask actor [
+        if cur-road-marker = -11
+        [
+          trace 0 word "SET TO -11!!!" actor
+        ]
 
+        set cur-road-pos cur-road-marker
+      ]
+    ]
+    [
+      set next-road-marker actor-road-pos
     ]
 
-    while [next = nobody and cur-marker > 0]
+    ;show word "next road marker " next-road-marker
+    set next max-one-of path-to-follow with [road-marker <= next-road-marker][road-marker]
+    ifelse next != nobody
     [
+      set next-road-marker [road-marker] of next - 1
+    ]
+    [
+      ;trace 0 (word "nobody on next patch search next road marker " next-road-marker " actor " actor " cur patch " cur-patch)
+      set next-road-marker terminus
+    ]
+
+  ]
+
+  while [next = nobody and next-road-marker >= terminus ] ;-2 is cemetary hill
+  [
+    ;trace 0 word "while loop next-road marker " next-road-marker
+    show word "nobody while next-road-markerd" next-road-marker
       ;trace 2 word "follow-path  3aba2 " [who] of actor
-      set cur-marker cur-marker - 1
-      set next one-of patches with [road? and road-marker = cur-marker - 1]
-    ]
 
-  ]
-  [
-    trace 2 word "follow-path not-on-path logic " [who] of actor
-    set next min-one-of patches with [tag = path-to-follow] [distance myself ]
-  ]
+      ifelse next-road-marker > terminus ; this will be town center for RR, after should go to c-hill
+      [
+        set next one-of patches with [road? and road-marker = next-road-marker and tag = path-to-follow]
+      ]
+      [ ;; should only be valid for terminus == -2
+        ;set next one-of patches with [road? and road-marker = next-road-marker and tag = "Chambersburg"]
+        ;trace 0 word "setting to terminus" actor
+        set next one-of cemetary-hill-set
+      ]
+      set next-road-marker next-road-marker - 1
+ ]
 
   ask actor [
+
+    set cur-road-pos next-road-marker
     set next-target next
   ]
   if [next-target] of actor = 0 or next = nobody
@@ -884,6 +982,7 @@ end
 
 
 to confed-move
+ ; show word "confed-move ticks at " ticks
   let actor self
   let next nobody
  ;set debug-mode? true
@@ -897,12 +996,14 @@ to confed-move
 ;    ;show word "trace 2a " [who] of actor
 ;  ]
 ;
+ ; show "confed-move trace 1"
   if [under-fire] of actor = 0 and [mode] of actor = "E"
   [
     ask actor [set mode "M"]
     stop
   ]
 
+ ; show "confed-move trace 2"
   if [under-fire] of actor > 0
   [
     ask actor [
@@ -924,7 +1025,6 @@ to confed-move
     ]
     [
       set new-heading heading-2
-
     ]
     ;show word "trace 2c " [who] of actor
      ask actor [
@@ -943,46 +1043,34 @@ to confed-move
     stop
   ]
 
+ ; show "confed-move trace 3"
   if mode = "M"
   [
     ;show word "trace 2 actor = " actor
-    ifelse phase-index = 0
-    [
+
       ;max-one-of turtles [distance myself
 
-      if [unit] of actor = "RoadWave1"[
-        ;show "trace 3a"
-        follow-path actor "Chambersburg"
-      ]
-      if [unit] of actor = "RRWave1"[
-        ;show "trace 3b"
-        follow-path actor "RR"
-      ]
-      trace 2 ( word "trace 3c next-target: " [next-target] of actor" who " [who] of actor )
-      if distance patch first confed-turn last confed-turn < 2
-      [set phase-index 1]
+    if [unit] of actor = "RoadWave1"[
+     ; show "confed-move Road wave trace"
+      ;show word "proc road:" actor
+      follow-path actor Chambersburg-road
     ]
-    [
-      ;show (word "trace 01a " [who] of actor " phase-index " phase-index)
-      ifelse phase-index = 1
-      [
-        ;show "trace 4"
-        face patch first cemetary-hill last cemetary-hill
-        set next patch-ahead 1
-      ]
-      [
-        ;show word "trace 01a who id: " [who] of actor
-        ;show (word "!!!trace 01a " [who] of actor " phase-index " phase-index)
-      ]
-
-      if actor = nobody or next = nobody
-      [
-        user-message (word "!!!! actor/next " actor next)
-      ]
-
+    if [unit] of actor = "RRWave1"[
+     ; show "confed-move RR wave trace"
+      ;show word "proc RR:" actor
+      follow-path actor rr-bed-path
     ]
+    trace 2 ( word "trace 3c next-target: " [next-target] of actor" who " [who] of actor )
+
   ]
+
+;  if actor = nobody or next = nobody
+;  [
+;        user-message (word "!!!! actor/next " actor next)
+;  ]
+
   ;show word "trace 02 " [who] of actor
+ ; show "confed-move trace 4"
   ask actor [
     ;trace 2 ( word "trace 10 next-target: " [next-target] of actor " who " [who] of actor )
     let cur-speed get-unit-speed actor
@@ -998,13 +1086,13 @@ to confed-move
 
     ;trace 4 (word "next: " next " speed: " cur-speed " base speed" [unit-speed] of actor)
   ]
-
+; show "confed-move trace 5"
 end
 
 to go
-  if item phase-index phases = "SouthEnter1" [
-    add-confederates-phase-1
-  ]
+
+  add-confederates-phase-1
+
 
   ask infantry with [ army = "North" ] [
     move-to-defend infantry with [army = "South"]
@@ -1013,11 +1101,11 @@ to go
     ;user-message word "s health: " south-health
   ]
 
-  ; Increment Confederate engage tick counter and global tick counte
   ask infantry with [army = "South"] [
     confed-move
     engage infantry with [army = "North"]
   ]
+
   if count infantry with [army = "South"] < .5 * wave-1-confederates [
     user-message "Simulation ends, more than 50% confederate casualties."
     stop
@@ -1033,7 +1121,6 @@ to go
     user-message "Reynolds reinforcements arrived."
     stop
   ]
-
 
   tick
 end
@@ -1119,6 +1206,7 @@ to message-direct [actor recipients targ-patch]
 end
 
 to move-to-defend[enemy-breed]
+ ; show word "move-to defend ticks at " ticks
   let actor self  ; Store the current agent as 'actor' for clarity and to avoid misuse of 'myself'
   if [army] of actor = "South"
   [stop]
@@ -1238,6 +1326,7 @@ end
 
 
 to engage [enemy-breed]
+ ; show word "engage ticks at " ticks
   let actor self  ; Store the current agent as 'actor' for clarity and to avoid misuse of 'myself'
   ;let target min-one-of enemy-breed [distance actor]
   let target one-of enemy-breed in-cone attack-range 150
@@ -1497,7 +1586,7 @@ start-pos-choice
 start-pos-choice
 -1
 10
-7.0
+10.0
 1
 1
 NIL

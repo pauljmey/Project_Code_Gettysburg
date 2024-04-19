@@ -1,0 +1,6 @@
+[
+  {"event":"start","timeStamp":"2024-04-19 10:38:01.910","eventInfo":{"studentName":"pjm","modelName":"new model","version":"NetLogo 6.4.0","ipAddress":"172.21.16.1","loginName":"paulj","events":"[input-box, switch, slider, model-open, compile, stop, chooser, button, speed-slider, comment, command-center, start, widget-edit]"}}
+, {"event":"model-open","timeStamp":"2024-04-19 10:38:01.916","eventInfo":{"name":"new model"}}
+, {"event":"compile","timeStamp":"2024-04-19 10:38:02.643","eventInfo":{"code":"","success":true}}
+, {"event":"stop","timeStamp":"2024-04-19 10:38:03.270"}
+]

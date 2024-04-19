@@ -310,9 +310,15 @@ def write_list_to_netlogo(data):
             os.remove(out_fn)
 
         with open(out_fn, 'a') as out_thing:
+            r, c = -1, -1
             for t in data[k]:
-                r = t[1]
-                c = t[2]
+                if len(t) == 3:
+                    r = t[1]
+                    c = t[2]
+                elif len(t) == 2:
+                    r = t[0]
+                    c = t[1]
+
                 if r < 0 or c < 0:
                     continue
 
@@ -385,7 +391,9 @@ def convert_coords_to_grid(coords, f_path=None, fn=None, filter=None, startswith
         if crd not in ret_forward:
             ret_forward[crd] = []
 
-        ret_forward[crd].append((fn, r, c))
+        cur_t = (fn, r, c)
+        if cur_t not in ret_forward[crd]:
+            ret_forward[crd].append(cur_t)
 
         back_key = tuple([r, c])
         if back_key not in ret_back:
@@ -406,7 +414,7 @@ def convert_coords_to_grid(coords, f_path=None, fn=None, filter=None, startswith
 
     for k, v in coords.items():
         crd = k
-        if isinstance(v, tuple) :
+        if isinstance(v, tuple):
             cur_lat = v[0]
             cur_long = v[1]
 
@@ -442,15 +450,10 @@ def interpolate(pts, divs = None):
     :param pt2:
     :return:
     """
-    ret = []
-    start = [pts[0][0], pts[0][1]]
-    if len(pts) == 2:
-        if not divs:
-            return pts
-        if divs == 1:
-            return pts
-
+    def get_interpolation_for_2(pts, divs):
+        ret = []
         tick_marks = divs - 1
+        start = [pts[0][0], pts[0][1]]
         long_size = (pts[0][1] - pts[1][1]) / divs
         lat_size = (pts[0][0] - pts[1][0]) / divs
         ret.append(start)
@@ -458,6 +461,31 @@ def interpolate(pts, divs = None):
             ret.append([start[0] - (i + 1) * lat_size, start[1] - (i + 1) * long_size])
 
         ret.append([pts[1][0], pts[1][1]])
+        return ret
+
+    ret = []
+    if not divs:
+        return pts
+
+    if len(pts) == 2:
+        if divs == 1:
+            return pts
+
+        return get_interpolation_for_2(pts, divs)
+
+
+    elif len(pts) > 2:
+        if divs < len(pts):
+            return pts
+
+        num_segments = len(pts) - 1
+        ticks_per_seg = divs // num_segments
+
+
+        for i, v in enumerate(pts):
+            if i > 0:
+                cur = get_interpolation_for_2(pts[i-1:i+1], ticks_per_seg)
+                ret.extend(cur)
 
     return ret
 
@@ -476,6 +504,24 @@ if __name__ == "__main__":
         coords = {}
         coords['cashtown'] = (39.851951117300096, -77.28371303627033)
         coords['ch pike SE terminus'] = (39.83091075801213, -77.23668826869114)
+        rr_coords = [
+            [39.856272385504, -77.29127422874386],
+            [39.855899663927666, -77.28969625079647],
+            [39.8549678511312, -77.28738997533493],
+            [39.853663291962704, -77.28399125360214],
+            [39.851985965169014, -77.27913593684097],
+            [39.851333660346576, -77.27682966137942],
+            [39.848817569394086, -77.26966806915672],
+            [39.84639457983426, -77.26420583780043],
+            [39.8438783078562, -77.2594719039583],
+            [39.841921143672835, -77.25595179930647],
+            [39.839963923703706, -77.25218892881658],
+            [39.83877341876554, -77.25033542354932],
+            [39.83719167797078, -77.24733134950647],
+            [39.83409399672003, -77.24175235485546],
+            [39.83231441452073, -77.23565837608284],
+            [39.83218259178295, -77.23145267242283]
+        ]
 
         results = convert_coords_to_grid(coords)
 
@@ -486,8 +532,14 @@ if __name__ == "__main__":
 
         chambersburg_road = {"ChambersburgRoad": road}
 
+        rr_map_pts = interpolate(rr_coords, divs=200)
+        rr_data = {"RR-Bed": rr_map_pts}
         road_res = convert_coords_to_grid(chambersburg_road)
+        rr_coords = convert_coords_to_grid(rr_data)
         write_list_to_netlogo(road_res[0])
+        rail_road_bed = rr_coords[0]
+
+        write_list_to_netlogo(rail_road_bed)
         pass
 
 
