@@ -1,6 +1,6 @@
 breed [infantry squad]
 infantry-own [health attack attack-range unit-speed mode goals army unit target-id target-dist
-  deploy-path-pos under-fire next-target cur-road-pos
+  deploy-path-pos under-fire next-target cur-road-pos under-fire-tick
 
 ]
 
@@ -15,9 +15,9 @@ globals [color-min color-max
   union-orientation
   confed-turn cemetary-hill total-unions-Buford personnel-per-turtle
   ridge-toggle? Gettysburg-town-center town town-toggle?
-  south-health Chambersburg-road rr-bed-path cemetary-hill-set
-  max-health
-  infantry-default-speed column-limit
+  south-health north-health
+  Chambersburg-road rr-bed-path cemetary-hill-set
+  max-health infantry-default-speed column-limit
   debug-mode? message-id message-coords
   union-arrived-list never-been-on-road terminus
   top-of-road
@@ -192,8 +192,9 @@ to initialize
   set ridge-toggle? false
   set town-toggle? false
   set south-health 0
+  set north-health 0
   set max-health 10
-  set infantry-default-speed .5
+  set infantry-default-speed .4
   set column-limit 32
   set debug-mode? false
   set never-been-on-road 1000
@@ -525,26 +526,12 @@ to update[amount]
 
 end
 to add-confederates-phase-1
-  let num-confederates (7600 / 5)  ; The total number of Confederate agents you plan to create
-
-  let max-xcor (max-pxcor / 6)  ; Maximum x-coordinate limit for the upper left quadrant
-  let max-ycor (max-pycor / 5)  ; Maximum y-coordinate limit for the upper left quadrant
-
-  let start-x1 -50
-  let start-y1 37
-  let end-x1 -40
-  let end-y1 30
-
-  let start-x2 -25
-  let start-y2 45
-  let end-x2 -20
-  let end-y2 50
-
+  let num-confederates (7600 / personnel-per-turtle)  ; The total number of Confederate agents you plan to create
 
   let to-deploy-on-road round(num-confederates / 2)
   let to-deploy-on-rr to-deploy-on-road ; splitting forces equally here
-  ;let to-deploy-on-road 1
-  ;let to-deploy-on-rr 1
+  ;let to-deploy-on-road 10
+  ;let to-deploy-on-rr 10
   if confed-deployed-on-road < to-deploy-on-road
   [
     set to-road? true
@@ -564,7 +551,7 @@ to-report in-bounds [cur aleft aright]
   let left-okay? false
   if aleft < 0
   [
-    set cur cur - 360
+    set cur cur - 350 ; Reynolds troops arrived at 10:20 AM, sim starts at 7:30
   ]
 
   set left-okay? true
@@ -746,7 +733,7 @@ to deploy-to-path[num-agents patch-limit path-list]
       set health max-health
       set attack 3
       set attack-range 5
-      set unit-speed 3
+      set unit-speed 3 ; about 16 mph at canter
       set army "North"
       set unit "Buford"
       set mode "D"
@@ -791,7 +778,7 @@ to setup-unions
 
   let cur-deploy-path-index union-start-pos
   ;user-message word "getting deploy path at pos " cur-deploy-path-index
-  set total-unions-Buford 10
+  ;set total-unions-Buford 10
   deploy-to-path total-unions-Buford patch-limit item cur-deploy-path-index stored-deploy-paths
   ask infantry with [army = "North"]
   [
@@ -879,7 +866,8 @@ to-report get-unit-speed[cur-unit]
   [
     if slope-a > 30 ; set stumble factor
     [
-      set res-speed res-speed * .8
+      ;set res-speed res-speed * .8
+      set res-speed .4 ; horse speed reduced to slow walking in steep
     ]
     ;trace 3 word "res-speed down: " res-speed
   ]
@@ -936,7 +924,7 @@ to follow-path[actor path-to-follow]
   while [next = nobody and next-road-marker >= terminus ] ;-2 is cemetary hill
   [
     ;trace 0 word "while loop next-road marker " next-road-marker
-    show word "nobody while next-road-markerd" next-road-marker
+    ;show word "nobody while next-road-markerd" next-road-marker
       ;trace 2 word "follow-path  3aba2 " [who] of actor
 
       ifelse next-road-marker > terminus ; this will be town center for RR, after should go to c-hill
@@ -980,36 +968,80 @@ to-report get-patch-population [actor targ-patch]
     report 50000 ;i.e. infinity
 end
 
+to reset-under-fire [actor]
 
-to confed-move
+  if ticks - [under-fire-tick] of actor >= 2
+  [
+    ask actor [set under-fire 0]
+  ]
+
+end
+
+to-report combat-check[actor]
+    let ret-val false
+    let enemy "North"
+    if [army] of actor = "North"
+    [
+      set enemy "South"
+    ]
+    let engaged-set min-one-of infantry with [army = [army] of actor and mode = "E"][distance actor]
+    let uf-set min-one-of infantry with [army = [army] of actor and under-fire > 0][distance actor]
+
+    if engaged-set != nobody
+    [
+      if distance engaged-set <= 1
+      [
+       report true
+      ]
+    ]
+
+
+    if uf-set != nobody
+    [
+      if distance uf-set <= 1
+      [
+       report true
+      ]
+    ]
+
+  report ret-val
+end
+
+to confed-move[enemy-breed]
  ; show word "confed-move ticks at " ticks
   let actor self
   let next nobody
  ;set debug-mode? true
   if [army] of actor = "North"
   [stop]
+  reset-under-fire actor
 
-  ;user-message "trace confed-move"
-;  if [health] of actor < .9 * max-health
-;  [
-;    ask actor [uphill cover]
-;    ;show word "trace 2a " [who] of actor
-;  ]
-;
- ; show "confed-move trace 1"
   if [under-fire] of actor = 0 and [mode] of actor = "E"
   [
     ask actor [set mode "M"]
     stop
   ]
 
- ; show "confed-move trace 2"
-  if [under-fire] of actor > 0
+  ;show "confed-move trace 2"
+  ;trace 0 "trace 1"
+
+   ;trace 0 "trace 3"
+  if [mode] of actor = "FL"
   [
-    ask actor [
-      set under-fire under-fire - 1
+    ;trace 0 "confed-move trace 2a"
+    if not combat-check actor
+    [
+      ask actor [
+        set mode "M"
+      ]
+      stop
     ]
+
     let nearest-enemy min-one-of infantry with [army = "North"] [distance actor]
+    if nearest-enemy = nobody
+    [
+      stop
+    ]
     face nearest-enemy
     let enemy-heading [heading] of actor
     let heading-1 (enemy-heading - 90) mod 360
@@ -1033,77 +1065,74 @@ to confed-move
         ask actor [
         set next-target patch-ahead 1]
         let cur-speed get-unit-speed actor
-        forward cur-speed
-        message-by-dir actor
-        message-by-dir actor
+        forward .8 * cur-speed
+        ;message-by-dir actor
+        ;message-by-dir actor
         set heading enemy-heading
+        if distance nearest-enemy > [attack-range] of actor
+        [forward .2 * cur-speed]
     ]
 
-    ask actor [ set mode "E" ]
+    ;ask actor [ set mode "E" ]
     stop
   ]
 
- ; show "confed-move trace 3"
+   ;show "confed-move trace 3"
   if mode = "M"
   [
-    ;show word "trace 2 actor = " actor
+    ;trace 0 "confed-move M mode"
+    if combat-check actor
+    [
+      ask actor [set mode "FL" ]
+      stop
+    ]
+    ;show word "trace 3a actor = " actor
 
-      ;max-one-of turtles [distance myself
-
+    ;trace 0 ( word "trace 3b actor who "  [who] of actor )
     if [unit] of actor = "RoadWave1"[
      ; show "confed-move Road wave trace"
       ;show word "proc road:" actor
+      ;show word "trace 3aa actor = " actor
       follow-path actor Chambersburg-road
     ]
     if [unit] of actor = "RRWave1"[
      ; show "confed-move RR wave trace"
       ;show word "proc RR:" actor
+      ;show word "trace 3ab actor = " actor
       follow-path actor rr-bed-path
     ]
-    trace 2 ( word "trace 3c next-target: " [next-target] of actor" who " [who] of actor )
-
+    ;trace 0 ( word "trace 3c next-target: " [next-target] of actor" who " [who] of actor )
+    ask actor [
+        face next-target
+        let cur-speed get-unit-speed actor
+        forward cur-speed
+    ]
+    stop
   ]
 
-;  if actor = nobody or next = nobody
-;  [
-;        user-message (word "!!!! actor/next " actor next)
-;  ]
-
-  ;show word "trace 02 " [who] of actor
- ; show "confed-move trace 4"
-  ask actor [
-    ;trace 2 ( word "trace 10 next-target: " [next-target] of actor " who " [who] of actor )
-    let cur-speed get-unit-speed actor
-    ifelse next-target = nobody
-    [
-      ;trace 0 (word "next-target is nobody cur-unit " self " cur patch " patch-here " mode " [mode] of actor " uf " [under-fire] of actor)
-    ]
-    [
-      face next-target
-      forward cur-speed
-      set next-target nobody
-    ]
-
-    ;trace 4 (word "next: " next " speed: " cur-speed " base speed" [unit-speed] of actor)
-  ]
-; show "confed-move trace 5"
 end
 
 to go
 
   add-confederates-phase-1
 
+  set north-health sum [health] of infantry with [army = "North"]
+  set south-health sum [health] of infantry with [army = "South"]
 
+  redeploy "North"
   ask infantry with [ army = "North" ] [
     move-to-defend infantry with [army = "South"]
     engage infantry with [army = "South"]
-    set south-health sum [health] of infantry with [army = "South"]
+
     ;user-message word "s health: " south-health
   ]
 
   ask infantry with [army = "South"] [
-    confed-move
-    engage infantry with [army = "North"]
+    confed-move infantry with [army = "North"]
+    if ticks mod 3 = 0 or ticks mod 3 = 2
+    [
+      engage infantry with [army = "North"]
+    ]
   ]
 
   if count infantry with [army = "South"] < .5 * wave-1-confederates [
@@ -1125,60 +1154,6 @@ to go
   tick
 end
 
-;to move-2
-;
-;
-;  let hill-dist 22
-;
-;  ifelse distance patch first cemetary-hill last cemetary-hill < 22
-;  [
-;    face patch first cemetary-hill last cemetary-hill
-;    forward .5
-;  ]
-;  [
-;    face patch first turn last turn
-;    forward .5
-;  ]
-;
-;
-;
-;end
-
-;to move-towards-union
-;  ; Ensure there are Union agents before proceeding
-;  if count infantry with [army = "North"] > 0 [
-;    ; Central y-coordinate as a reference point
-;    let center-y (min-pycor / 2)
-;
-;    ; Calculate the average position (centroid) of Union forces
-;    let union-center-x mean [xcor] of infantry with [army = "North"]
-;    let union-center-y mean [ycor] of infantry with [army = "North"]
-;
-;    ; Generate a random target point across the width and below the current position
-;    let random-target-x (min-pxcor + random (2 * max-pxcor))
-;
-;
-;    ;let random-target-y center-y + random-float ((min [ycor] of confederates) - center-y)
-;    let last-pos length deployment-path - 1
-;    let cemetary-hill item last-pos deployment-path
-;
-;    ; Ensure the target doesn't go too low or off-screen
-;    ;if random-target-y < center-y [set random-target-y center-y]
-;
-;    ; Calculate a weighted target point, partially oriented towards Union centroid
-;    let weight 0.7  ; Adjust the weight for more or less orientation towards Union
-;    let target-x (weight * union-center-x + (1 - weight) * first cemetary-hill)
-;    let target-y (weight * union-center-y + (1 - weight) * last cemetary-hill)
-;
-;    ; Adjust heading towards the weighted target position
-;    set heading towardsxy target-x target-y
-;
-;    ; Move forward with randomness in speed to simulate terrain and uncertainty
-;    forward 0.5 + (random-float 0.2)  ; Adjusted for noticeable variability
-;  ]
-;end
-
-
 
 to message-by-dir [actor]
   let cur-set infantry with [army = [army] of actor and distance myself < [attack-range] of actor]
@@ -1195,11 +1170,33 @@ to message-by-dir [actor]
 
 end
 
-to message-direct [actor recipients targ-patch]
+to place-with-best-cover[actor]
+
+let nearest-cover-patch max-one-of neighbors [cover]
+      foreach range 3 [
+        let test-pop get-patch-population actor nearest-cover-patch
+        ;let cur-cover [of] patch-here
+        let new-cover [cover] of nearest-cover-patch
+        ifelse new-cover > test-pop
+        [
+          ask actor [
+            set xcor [pxcor] of nearest-cover-patch
+            set ycor [pycor] of nearest-cover-patch
+          ]
+        ]
+        [
+          set nearest-cover-patch max-one-of neighbors who-are-not nearest-cover-patch [cover]
+        ]
+      ]
+
+end
+
+
+to message-direct [recipients targ-patch new-mode]
   if recipients != nobody
   [
     ask recipients [
-      set message-id [who] of actor
+      set mode new-mode
       set message-coords list [pxcor] of targ-patch [pycor] of targ-patch
     ]
   ]
@@ -1211,51 +1208,36 @@ to move-to-defend[enemy-breed]
   if [army] of actor = "South"
   [stop]
 
-  ;let debug-proc false
+  reset-under-fire actor
 
-  ;if any? infantry with [mode = "DF"]
-  ;[ user-message word "df mode " infantry with [mode = "DF"]]
-  if [health] of actor < .9 * max-health
-  [
-    ask actor [
-      let near-cover max-one-of neighbors [cover]
-      ifelse [cover] of near-cover = [cover] of actor
-      [
-        ; climb instead
-        uphill elevation
-      ]
-      [
-        uphill cover
-      ]
-
-    ]
-  ]
-  ask actor [ set under-fire under-fire - 1]
-  if [under-fire] of actor = 0 and [mode] of actor = "E"
-  [
-    ask actor [
+  if [mode] of actor = "DM" [
+    ask actor[
       set mode "D"
+      uphill cover
     ]
+    stop
   ]
 
-  if [health] of actor < 3
+  if [health] of actor < 2
   [
     let c-hill patch first cemetary-hill last cemetary-hill
     let c-hill-dist distance c-hill
+    ask actor [set color 87]
     if not member? actor union-arrived-list and distance c-hill < 2
     [
       while [get-patch-population actor patch-here > [cover] of patch-here]
         [
           ask actor [
             set heading random 360
-            forward 1 ]
+            forward 1
+            set mode "D"
+          ]
         ]
 
       set union-arrived-list lput actor union-arrived-list
 
       stop
     ]
-
 
     face c-hill
     ask actor[
@@ -1266,86 +1248,238 @@ to move-to-defend[enemy-breed]
     stop
   ]
 
+
+  let standard-defense-set infantry with [army = "North" and mode = "D"]
+  ; when less than half the original are either being redeployed or engaged with enemy
+  ; that will be the point at which we switch to a delaying action mode
+  if count standard-defense-set < .75 * total-unions-Buford
+  [
+    ask standard-defense-set [
+      set mode "DA"
+      set color magenta
+    ]
+  ]
+
+;  if [under-fire] of actor = 0 and [mode] of actor = "E"
+;  [
+;    ask actor [
+;      set mode "D"
+;      set color blue
+;      set shape "default"
+;    ]
+;  ]
+;
+;  if [under-fire] of actor > 0
+;  [
+;    if [mode] of actor = "RD"
+;    [
+;      ask actor[ set mode "DA"]
+;      stop
+;    ]
+;  ]
+
+
+  if [mode] of actor = "DA" or [mode] of actor = "E"
+  [
+    ask actor [
+      set next-target patch-here
+    ]
+
+    uphill cover
+;    if patch-here != [next-target] of actor
+;    [
+;      uphill elevation
+;    ]
+
+    let nearest-enemy min-one-of infantry with [army = "South"] [distance actor]
+    let time-passed ticks - [under-fire-tick] of actor
+    face nearest-enemy
+    let enemy-heading [heading] of actor
+    face patch first Gettysburg-town-center last Gettysburg-town-center
+    let town-heading [heading] of actor
+    let new-heading 0
+
+    if time-passed > 10
+    [
+      set new-heading enemy-heading
+    ]
+    if time-passed <= 10 and time-passed > 3
+    [
+      set new-heading (enemy-heading + town-heading) / 2
+      ;trace 0 (word "heading for midrange is " new-heading " actor " actor " en hd/tn hd " enemy-heading " / " town-heading)
+    ]
+    if time-passed <= 3 and time-passed > 2  [
+      set new-heading town-heading
+    ]
+    if time-passed <= 2 or distance nearest-enemy < [attack-range] of actor
+    [
+      set new-heading (enemy-heading + 180) mod 360
+    ]
+
+    ask actor
+    [
+      set heading new-heading
+        forward get-unit-speed actor
+    ]
+    if distance nearest-enemy < [attack-range] of actor
+    [
+      place-with-best-cover actor
+    ]
+
+  ]
+
   if [mode] of actor = "D"
   [
       set color blue
       let my-enemy min-one-of enemy-breed [distance actor]
       if my-enemy != nobody
-      [face my-enemy]
-      if message-id != -1
       [
-        ask actor [set mode "DF"]
-      ]
+        ask actor
+         [
+            face my-enemy
+            ifelse distance my-enemy > [attack-range] of actor
+            [
+               ;forward get-unit-speed actor
+            ]
+            [
+               uphill cover
+            ]
+            face my-enemy
+         ]
+
+     ]
+
+    ;ask actor [set mode "DF"]
+
     stop
   ]
 
 
-   if [mode] of actor = "DF"
-   [
-    set mode "D"
-    set color green
-    ;show word "got a moving message " [who] of actor
-    let saved-heading heading
-    let move-targ patch first message-coords last message-coords
-    if move-targ != nobody
-    [
-      face move-targ
-      let next-p patch-ahead 1
-      ifelse next-p = nobody
-      [
-        ;trace 0 (word "next p " [pxcor] of patch-here ":" [pycor] of patch-here)
-      ]
-      [
-        ask actor [
-          set next-target next-p
-          forward get-unit-speed actor
-          set heading saved-heading
-        ]
+;   if [mode] of actor = "DF"
+;   [
+;    ;set mode "D"
+;    set color green
+;    set shape "triangle"
+;    ;show word "got a moving message " [who] of actor
+;    let saved-heading heading
+;    ;let move-targ patch first message-coords last message-coords
+;    if move-targ != nobody
+;    [
+;      face move-targ
+;      let next-p patch-ahead 1
+;      ifelse next-p = nobody
+;      [
+;        ;trace 0 (word "next p " [pxcor] of patch-here ":" [pycor] of patch-here)
+;      ]
+;      [
+;        ask actor [
+;          set next-target next-p
+;          forward get-unit-speed actor
+;          set heading saved-heading
+;        ]
+;
+;      ]
+;    ]
 
-      ]
-    ]
-
-    let next-bud nobody
-    ;let redeploy-set max-n-of 2 infantry with [army = "North"][distance actor]
-    message-by-dir actor
-    stop
-   ]
+;    let next-bud nobody
+;    ;let redeploy-set max-n-of 2 infantry with [army = "North"][distance actor]
+;    ;message-by-dir actor
+;    stop
+;   ]
 
   if [mode] of actor = "RD"
   [
+    let new-pos patch first message-coords last message-coords
     ask actor
     [
-      face patch first message-coords last message-coords
+      set shape "square"
+      face new-pos
       forward get-unit-speed actor
     ]
-
+    if distance new-pos < 2
+    [
+      place-with-best-cover actor
+      ask actor [
+        set mode "DA"
+        set shape "triangle"
+      ]
+    ]
   ]
 
 
 end
 
+to redeploy[army-to-redeploy]
+
+  let engaged-set infantry with [army = army-to-redeploy and mode = "E"]
+  let engaged count engaged-set
+  if engaged = 0 [stop]
+
+  let nearest-rando min-one-of engaged-set [distance self]
+  let available-set infantry with [army = army-to-redeploy and mode = "D"]
+  let available count available-set
+  if available > 0
+  [
+    let to-redeploy round .3 * available
+    if to-redeploy < 1
+    [
+      set to-redeploy 1
+    ]
+    ;show word "redeploying " to-redeploy
+    let redeploy-set max-n-of to-redeploy available-set[distance nearest-rando]
+    if redeploy-set != nobody [
+      ask redeploy-set [
+        set mode "RD"
+        set color green
+        set shape "square"
+    ]
+    let targ-p [patch-here] of nearest-rando
+    message-direct redeploy-set targ-p "RD"
+
+    set available-set infantry with [army = army-to-redeploy and mode = "D"]
+    set available count available-set
+    if available = 0 [stop]
+    set to-redeploy min list available 4
+    let redeploy-set-2 min-n-of to-redeploy available-set[distance nearest-rando]
+    if redeploy-set-2 != nobody
+      [
+        ask redeploy-set-2 [
+        set mode "RD"
+        set color green
+        set shape "square"
+    ]
+    message-direct redeploy-set-2 targ-p "RD"
+      ]
+
+
+    ; show word "redeploying " count redeploy-set
+
+    ]
+  ]
+
+end
 
 to engage [enemy-breed]
  ; show word "engage ticks at " ticks
   let actor self  ; Store the current agent as 'actor' for clarity and to avoid misuse of 'myself'
   ;let target min-one-of enemy-breed [distance actor]
-  let target one-of enemy-breed in-cone attack-range 150
-  let seen? target != nobody
+  ;let target one-of enemy-breed in-cone attack-range 150
+
+  ;let seen? target != nobody
+  let seen? true
   ;user-message word "vision test " seen?
-  let my-mode [mode] of actor
+  ;let my-mode [mode] of actor
+
+  if [army] of actor = "North"
+  [
+      let my-mode [mode] of actor
+      ;if my-mode = "RD" or my-mode = "DF" or my-mode = "DM"
+      ;[stop]
+  ]
+
+  let target min-one-of enemy-breed [distance actor]
   ifelse not seen?
   [
-    if [army] of actor = "North"
-    [
-      set color blue
-      set mode "D"
-    ]
-    if [army] of actor = "South"
-    [
-      set color red
-      set mode "M"
-    ]
-
     stop
   ]
   [
@@ -1362,7 +1496,6 @@ to engage [enemy-breed]
         set dist-delta cur-dist - [target-dist] of actor
         if dist-delta > 0 [set follow? true]
 
-
         ask actor [  ; Ensure 'ask' is correctly scoped to use 'actor' not 'myself'
           set mode "E"
           if [army] of actor = "North"
@@ -1370,55 +1503,39 @@ to engage [enemy-breed]
           if [army] of actor = "South"
             [set color pink]
 
+          if [army] of actor = [army] of target
+          [
+            trace 0 "messed up!!!"
+          ]
           set target-id [who] of target
           set target-dist cur-dist
           fight target
         ]
 
-        if [army] of actor = "North"
-          [
-            set target min-one-of enemy-breed [distance myself]
-            ask actor
-            [
-              ;message-by-dir actor
-              ifelse target != nobody
-              [
+;        if [army] of actor = "North"
+;          [
+;            set target min-one-of enemy-breed [distance myself]
+;            ask actor
+;            [
+;              ;message-by-dir actor
+;              if target != nobody
+;              [
+;                ;message-by-dir actor
+;                set target min-one-of enemy-breed [distance myself]
+;
+;                set heading [heading] of target
+;                set next-target patch-ahead 1
+;                let next-target-2 patch-ahead 2
+;
+;                forward get-unit-speed actor
+;                face target
+;            ]
+;         ]
+;        ]
 
-                ;message-by-dir actor
-                set target min-one-of enemy-breed [distance myself]
-
-                set heading [heading] of target
-                set next-target patch-ahead 1
-                let next-target-2 patch-ahead 2
-
-                forward get-unit-speed actor
-                face target
-
-                let available-set infantry with [army = [army] of actor and mode = "D"]
-                let available count available-set
-                if available > 0 and available <= 2
-                [
-                  let redeploy-set max-n-of available available-set[distance myself]
-                  if redeploy-set != nobody [
-                    ask redeploy-set [
-                      set mode "RD"
-                  ]
-                ]
-               ;trace 0 word "redeploying " redeploy-set
-                message-direct actor redeploy-set next-target-2
-
-                ]
-
-              ]
-              [
-                trace 0 "target in follow logic is nobody"
-              ]
             ]
           ]
      ]
-   ]
- ]
-
 
 end
 
@@ -1430,9 +1547,12 @@ to-report get-effective-cover[target ]
   let targ-elevation [elevation] of targ-patch
   let elevation-difference my-elevation - targ-elevation
   let dist-meters (distance target * 65)
+
+  if dist-meters = 0
+  [
+    report patch-cover
+  ]
   let slope-a convert-slope-to-geometric-angle dist-meters elevation-difference
-
-
   let slope-factor 1 + .5 * tan slope-a
 
   report patch-cover * slope-factor
@@ -1440,6 +1560,14 @@ end
 
 to fight [target]
   let actor self
+  if [army] of actor = "South"
+  [
+    ;show "************"
+  ]
+  if [army] of actor = "North"
+  [
+    ;show "!!!!!!!!!!!!"
+  ]
   let attack-value [attack] of myself
   let dist-meters (distance target * 65)
   let targ-pos list [xcor] of target [ycor] of target
@@ -1465,7 +1593,7 @@ to fight [target]
   let cover-factor .2 ; reduction of success by availability of cover
   ifelse targ-mode = "M"
   [
-    set cover-factor 1  ; no coverage while moving
+    ;set cover-factor 1  ; no coverage while moving
   ]
   [
     if targ-patch-pop > effective-cover;
@@ -1475,7 +1603,9 @@ to fight [target]
       if random-float 1 < prob-not-covered [set cover-factor 1]
     ]
   ]
-  ask target [set under-fire under-fire + 1] ;under-fire
+  ask target [set under-fire under-fire + 1
+    set under-fire-tick ticks
+  ] ;under-fire
 
   let saved-prob success-prob * 100
   set success-prob (success-prob * cover-factor) * 100
@@ -1488,8 +1618,10 @@ to fight [target]
   ; Check if the attack is successful based on the success probability
 
   if random 100 < success-prob [
+    let health-factor ([health] of actor) / max-health
+    let attack-hit health-factor * [attack-value] of actor
     ask target [
-      set health health - attack-value
+      set health health - attack-hit
       if health <= 0
       [
         die
@@ -1586,7 +1718,7 @@ start-pos-choice
 start-pos-choice
 -1
 10
-10.0
+3.0
 1
 1
 NIL
@@ -1597,7 +1729,7 @@ PLOT
 17
 2384
 492
-plot 1
+Remaining Units
 NIL
 NIL
 0.0
@@ -1605,7 +1737,7 @@ NIL
 0.0
 10.0
 true
-false
+true
 "" ""
 PENS
 "default" 1.0 0 -5298144 true "plot count unions" "plot count infantry with [army = \"South\"]"
@@ -1665,7 +1797,7 @@ PLOT
 555
 2381
 929
-plot 2
+Total Health of Forces
 NIL
 NIL
 0.0
@@ -1673,10 +1805,11 @@ NIL
 0.0
 10.0
 true
-false
+true
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot south-health"
+"default" 1.0 0 -7500403 true "" "plot south-health"
+"pen-1" 1.0 0 -13345367 true "" "plot north-health"
 
 SLIDER
 14
