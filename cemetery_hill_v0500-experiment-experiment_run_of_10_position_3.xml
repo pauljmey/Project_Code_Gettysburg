@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE experiments SYSTEM "behaviorspace.dtd">
+<experiments>
+  <experiment name="experiment" repetitions="10" runMetricsEveryStep="true">
+    <setup>initialize
+setup</setup>
+    <go>go</go>
+    <metric>count turtles</metric>
+    <enumeratedValueSet variable="ridge-elev-threshold">
+      <value value="0.925"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="start-pos-choice">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="debug-set">
+      <value value="2"/>
+    </enumeratedValueSet>
+  </experiment>
+</experiments>

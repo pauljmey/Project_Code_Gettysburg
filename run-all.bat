@@ -1,0 +1,1 @@
+"C:/Program Files/NetLogo 6.4.0/NetLogo_Console" --headless --model "cemetery_hill_v0500.nlogo"  --setup-file "cemetery_hill_v0500-experiments.xml" --spreadsheet all-experiments.csv
