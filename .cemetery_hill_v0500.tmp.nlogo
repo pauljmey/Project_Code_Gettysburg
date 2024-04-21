@@ -1138,18 +1138,19 @@ to go
   ]
 
   if count infantry with [army = "South"] < .5 * wave-1-confederates [
-    user-message "Simulation ends, more than 50% confederate casualties."
+    ;user-message "Simulation ends, more than 50% confederate casualties."
     stop
   ]
 
   if count infantry with [army = "North"] <= 0 [
-    user-message "Simulation ends, union forces destroyed."
+    ;user-message "Simulation ends, union forces destroyed."
     stop
   ]
 
   if ticks > 349
   [
-   ; user-message "Reynolds reinforcements arrived."
+    ;removed for experiment runs
+   ;user-message "Reynolds reinforcements arrived."
     stop
   ]
 
